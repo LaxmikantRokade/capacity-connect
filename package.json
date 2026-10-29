@@ -1,0 +1,30 @@
+{
+  "name": "capacity-connect",
+  "version": "1.0.0",
+  "description": "Digital Capacity Building and Learning Management Portal - Smart India Hackathon 2026 (SIH26075)",
+  "private": true,
+  "workspaces": [
+    "client",
+    "server"
+  ],
+  "scripts": {
+    "install:all": "npm install",
+    "dev:server": "npm run --prefix server dev",
+    "dev:client": "npm run --prefix client dev",
+    "dev": "concurrently -n \"SERVER,CLIENT\" -c \"cyan,blue\" \"npm run dev:server\" \"npm run dev:client\"",
+    "build:server": "npm run --prefix server build",
+    "build:client": "npm run --prefix client build",
+    "build": "npm run build:server && npm run build:client",
+    "start": "npm run --prefix server start",
+    "db:push": "npm run --prefix server prisma:push",
+    "db:seed": "npm run --prefix server seed",
+    "db:pg:push": "npm run --prefix server prisma:pg:push",
+    "db:pg:seed": "npm run --prefix server db:pg:seed",
+    "test:client": "npm run --prefix client test",
+    "test:server": "npm run --prefix server test",
+    "test": "npm run test:server && npm run test:client"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.0"
+  }
+}

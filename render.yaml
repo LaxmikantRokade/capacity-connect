@@ -1,0 +1,63 @@
+# ========================================================
+# Render Blueprint (Infrastructure as Code)
+# Capacity Connect - SIH26075
+# ========================================================
+version: "1"
+
+services:
+  # 1. Backend Web Service (Node.js + Express + Prisma)
+  - type: web
+    name: capacityconnect-api
+    runtime: node
+    plan: free
+    region: oregon
+    branch: main
+    rootDir: .
+    buildCommand: npm install && npm run build:server && npm run --prefix server prisma:push && npm run --prefix server seed
+    startCommand: npm run --prefix server start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: HOST
+        value: 0.0.0.0
+      - key: CLIENT_URL
+        value: https://capacityconnect.onrender.com
+      - key: JWT_SECRET
+        generateValue: true
+      - key: JWT_EXPIRES_IN
+        value: 7d
+      # SQLite by default, or link to managed postgres below
+      - key: DATABASE_URL
+        value: file:./dev.db
+        # If using Render Postgres below, replace with:
+        # fromDatabase:
+        #   name: capacityconnect-db
+        #   property: connectionString
+
+  # 2. Frontend Static Site (React 18 + Vite)
+  - type: web
+    name: capacityconnect-web
+    runtime: static
+    plan: free
+    region: oregon
+    branch: main
+    rootDir: .
+    buildCommand: npm install && npm run build:client
+    staticPublishPath: client/dist
+    routes:
+      # React Router SPA direct refresh rewrite rule
+      - type: rewrite
+        source: /*
+        destination: /index.html
+    envVars:
+      - key: VITE_API_URL
+        value: https://capacityconnect-api.onrender.com
+
+# Optional: Managed PostgreSQL Database for production
+# databases:
+#   - name: capacityconnect-db
+#     databaseName: capacity_connect
+#     user: capacity_user
+#     plan: free
+#     region: oregon
