@@ -1,16 +1,24 @@
 import { Router } from 'express';
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient, Prisma } from '@prisma/client';
 import { authenticateToken, requireRole, AuthRequest } from '../middleware/auth.js';
 
 const router = Router();
 const prisma = new PrismaClient();
+
+type CourseWithInstructorAndDept = Prisma.CourseGetPayload<{
+  include: {
+    instructor: { select: { id: true; name: true; role: true } };
+    department: { select: { id: true; name: true } };
+    _count: { select: { enrollments: true; modules: true } };
+  };
+}>;
 
 // GET /api/courses
 router.get('/', async (req, res) => {
   try {
     const { category, level, search } = req.query;
 
-    const where: any = { isPublished: true };
+    const where: Prisma.CourseWhereInput = { isPublished: true };
     if (category && category !== 'All') {
       where.category = String(category);
     }
@@ -36,7 +44,7 @@ router.get('/', async (req, res) => {
       orderBy: { createdAt: 'desc' },
     });
 
-    const formatted = courses.map((c) => ({
+    const formatted = courses.map((c: CourseWithInstructorAndDept) => ({
       ...c,
       learningObjectives: JSON.parse(c.learningObjectives || '[]'),
       instructorName: c.instructor?.name || 'Lead Instructor',

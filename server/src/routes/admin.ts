@@ -1,9 +1,21 @@
 import { Router } from 'express';
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient, Prisma } from '@prisma/client';
 import { authenticateToken, requireRole, AuthRequest } from '../middleware/auth.js';
 
 const router = Router();
 const prisma = new PrismaClient();
+
+type DepartmentWithCount = Prisma.DepartmentGetPayload<{
+  include: {
+    _count: {
+      select: { users: true; courses: true };
+    };
+  };
+}>;
+
+type UserSkillWithSkill = Prisma.UserSkillGetPayload<{
+  include: { skill: true };
+}>;
 
 // GET /api/admin/metrics - Analytics summary based on real database records
 router.get('/metrics', authenticateToken, requireRole(['ADMIN', 'MANAGER']), async (req: AuthRequest, res) => {
@@ -27,7 +39,7 @@ router.get('/metrics', authenticateToken, requireRole(['ADMIN', 'MANAGER']), asy
       },
     });
 
-    const departmentStats = departments.map((d) => ({
+    const departmentStats = departments.map((d: DepartmentWithCount) => ({
       id: d.id,
       name: d.name,
       code: d.code,
@@ -41,7 +53,7 @@ router.get('/metrics', authenticateToken, requireRole(['ADMIN', 'MANAGER']), asy
     });
 
     const skillGapMap: Record<string, { totalTarget: number; totalCurrent: number; count: number; name: string }> = {};
-    userSkills.forEach((us) => {
+    userSkills.forEach((us: UserSkillWithSkill) => {
       const current = us.verifiedProficiency || us.selfProficiency;
       if (!skillGapMap[us.skillId]) {
         skillGapMap[us.skillId] = {
@@ -123,7 +135,7 @@ router.post('/assign-course', authenticateToken, requireRole(['ADMIN', 'MANAGER'
         where: { departmentId },
         select: { id: true },
       });
-      targetUserIds = deptUsers.map((u) => u.id);
+      targetUserIds = deptUsers.map((u: { id: string }) => u.id);
     }
 
     let assignedCount = 0;

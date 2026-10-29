@@ -1,15 +1,21 @@
 import { Router } from 'express';
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient, Prisma } from '@prisma/client';
 import { authenticateToken, AuthRequest } from '../middleware/auth.js';
 
 const router = Router();
 const prisma = new PrismaClient();
 
+type ArticleWithAuthor = Prisma.KnowledgeArticleGetPayload<{
+  include: {
+    author: { select: { id: true; name: true; jobRole: true; role: true } };
+  };
+}>;
+
 // GET /api/knowledge/articles
 router.get('/articles', async (req, res) => {
   try {
     const { search, category } = req.query;
-    const where: any = { isPublished: true };
+    const where: Prisma.KnowledgeArticleWhereInput = { isPublished: true };
 
     if (category && category !== 'All') {
       where.category = String(category);
@@ -33,10 +39,10 @@ router.get('/articles', async (req, res) => {
       orderBy: { createdAt: 'desc' },
     });
 
-    const formatted = articles.map((a) => ({
+    const formatted = articles.map((a: ArticleWithAuthor) => ({
       ...a,
       authorName: a.author.name,
-      tags: a.tags ? a.tags.split(',').map((t) => t.trim()) : [],
+      tags: a.tags ? a.tags.split(',').map((t: string) => t.trim()) : [],
     }));
 
     return res.json(formatted);
@@ -72,7 +78,7 @@ router.get('/articles/:slug', async (req, res) => {
     return res.json({
       ...article,
       authorName: article.author.name,
-      tags: article.tags ? article.tags.split(',').map((t) => t.trim()) : [],
+      tags: article.tags ? article.tags.split(',').map((t: string) => t.trim()) : [],
     });
   } catch (err: any) {
     return res.status(500).json({ error: 'Failed to fetch article' });

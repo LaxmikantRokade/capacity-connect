@@ -1,9 +1,16 @@
 import { Router } from 'express';
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient, Prisma } from '@prisma/client';
 import { authenticateToken, requireRole, AuthRequest } from '../middleware/auth.js';
 
 const router = Router();
 const prisma = new PrismaClient();
+
+type SessionWithInstructorAndCount = Prisma.TrainingSessionGetPayload<{
+  include: {
+    instructor: { select: { id: true; name: true; jobRole: true; avatarUrl: true } };
+    _count: { select: { registrations: true } };
+  };
+}>;
 
 // GET /api/training/sessions
 router.get('/sessions', async (req, res) => {
@@ -16,7 +23,7 @@ router.get('/sessions', async (req, res) => {
       orderBy: { startTime: 'asc' },
     });
 
-    const formatted = sessions.map((s) => ({
+    const formatted = sessions.map((s: SessionWithInstructorAndCount) => ({
       ...s,
       instructorName: s.instructor?.name || 'Faculty Lead',
       enrolledCount: s._count.registrations,

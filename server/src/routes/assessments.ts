@@ -1,10 +1,21 @@
 import { Router } from 'express';
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient, Prisma, Question } from '@prisma/client';
 import crypto from 'crypto';
 import { authenticateToken, AuthRequest } from '../middleware/auth.js';
 
 const router = Router();
 const prisma = new PrismaClient();
+
+type AssessmentQuestionSelect = Prisma.QuestionGetPayload<{
+  select: {
+    id: true;
+    assessmentId: true;
+    questionText: true;
+    orderIndex: true;
+    options: true;
+    explanation: true;
+  };
+}>;
 
 // GET /api/assessments/course/:courseId
 router.get('/course/:courseId', async (req, res) => {
@@ -35,7 +46,7 @@ router.get('/course/:courseId', async (req, res) => {
     const formatted = {
       ...assessment,
       courseTitle: assessment.course.title,
-      questions: assessment.questions.map((q) => ({
+      questions: assessment.questions.map((q: AssessmentQuestionSelect) => ({
         ...q,
         options: JSON.parse(q.options || '[]'),
       })),
@@ -73,8 +84,8 @@ router.post('/:id/submit', authenticateToken, async (req: AuthRequest, res) => {
     let correctCount = 0;
     const totalQuestions = assessment.questions.length;
 
-    const detailedAnswers = assessment.questions.map((q) => {
-      const userAns = answers.find((a: any) => a.questionId === q.id);
+    const detailedAnswers = assessment.questions.map((q: Question) => {
+      const userAns = answers.find((a: { questionId: string; selectedOption: number }) => a.questionId === q.id);
       const selectedOption = userAns ? Number(userAns.selectedOption) : -1;
       const isCorrect = selectedOption === q.correctOptionIndex;
       if (isCorrect) correctCount++;

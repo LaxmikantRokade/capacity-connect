@@ -1,9 +1,16 @@
 import { Router } from 'express';
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient, Prisma } from '@prisma/client';
 import { authenticateToken, AuthRequest } from '../middleware/auth.js';
 
 const router = Router();
 const prisma = new PrismaClient();
+
+type CertificateWithCourseAndUser = Prisma.CertificateGetPayload<{
+  include: {
+    course: { select: { title: true; code: true } };
+    user: { select: { name: true } };
+  };
+}>;
 
 // GET /api/certificates/my
 router.get('/my', authenticateToken, async (req: AuthRequest, res) => {
@@ -17,7 +24,7 @@ router.get('/my', authenticateToken, async (req: AuthRequest, res) => {
       orderBy: { issueDate: 'desc' },
     });
 
-    const formatted = certificates.map((c) => ({
+    const formatted = certificates.map((c: CertificateWithCourseAndUser) => ({
       id: c.id,
       certificateNumber: c.certificateNumber,
       userId: c.userId,

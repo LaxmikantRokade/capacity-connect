@@ -1,9 +1,15 @@
 import { Router } from 'express';
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient, Prisma } from '@prisma/client';
 import { authenticateToken, requireRole, AuthRequest } from '../middleware/auth.js';
 
 const router = Router();
 const prisma = new PrismaClient();
+
+type UserSkillWithSkill = Prisma.UserSkillGetPayload<{
+  include: {
+    skill: true;
+  };
+}>;
 
 // GET /api/skills - All master skills
 router.get('/', async (req, res) => {
@@ -28,7 +34,7 @@ router.get('/user/:userId', authenticateToken, async (req: AuthRequest, res) => 
       },
     });
 
-    const formatted = userSkills.map((us) => ({
+    const formatted = userSkills.map((us: UserSkillWithSkill) => ({
       id: us.id,
       userId: us.userId,
       skillId: us.skillId,
