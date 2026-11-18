@@ -13,7 +13,7 @@ services:
     region: oregon
     branch: main
     rootDir: .
-    buildCommand: npm install && npm run build:server && npm run --prefix server prisma:push && npm run --prefix server seed
+    buildCommand: npm install --include=dev && npm run build:server && npm run --prefix server prisma:push && npm run --prefix server seed
     startCommand: npm run --prefix server start
     healthCheckPath: /api/health
     envVars:
@@ -22,7 +22,7 @@ services:
       - key: HOST
         value: 0.0.0.0
       - key: CLIENT_URL
-        value: https://capacityconnect.onrender.com
+        value: https://capacityconnect-client.vercel.app,https://capacityconnect.vercel.app,https://capacityconnect.onrender.com
       - key: JWT_SECRET
         generateValue: true
       - key: JWT_EXPIRES_IN
@@ -43,7 +43,7 @@ services:
     region: oregon
     branch: main
     rootDir: .
-    buildCommand: npm install && npm run build:client
+    buildCommand: npm install --include=dev && npm run build:client
     staticPublishPath: client/dist
     routes:
       # React Router SPA direct refresh rewrite rule
