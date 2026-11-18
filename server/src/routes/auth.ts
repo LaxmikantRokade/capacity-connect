@@ -9,12 +9,12 @@ const prisma = new PrismaClient();
 const JWT_SECRET = process.env.JWT_SECRET || 'capacity_connect_super_secret_jwt_key_sih2026';
 const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '7d';
 
-// POST /api/auth/login
-router.post('/login', async (req, res) => {
+// POST /api/auth/login and /api/auth/signin
+const loginHandler = async (req: any, res: any) => {
   try {
     const { email, password } = req.body;
     if (!email || !password) {
-      return res.status(400).json({ error: 'Email and password are required' });
+      return res.status(400).json({ error: 'Email and password are required', message: 'Enter a valid email and password.' });
     }
 
     const user = await prisma.user.findUnique({
@@ -23,40 +23,50 @@ router.post('/login', async (req, res) => {
     });
 
     if (!user) {
-      return res.status(401).json({ error: 'Invalid email or password' });
+      return res.status(401).json({ error: 'Invalid email or password', message: 'Invalid email or password' });
     }
 
     const isValid = await bcrypt.compare(password, user.passwordHash);
     if (!isValid) {
-      return res.status(401).json({ error: 'Invalid email or password' });
+      return res.status(401).json({ error: 'Invalid email or password', message: 'Invalid email or password' });
     }
 
     const token = jwt.sign(
       { id: user.id, email: user.email, role: user.role, name: user.name },
       JWT_SECRET,
-      { credentials: true, expiresIn: JWT_EXPIRES_IN } as any
+      { expiresIn: JWT_EXPIRES_IN } as any
     );
 
     const { passwordHash: _, ...safeUser } = user;
+    const userData = {
+      ...safeUser,
+      departmentName: user.department?.name,
+    };
+
     return res.json({
+      success: true,
       token,
-      user: {
-        ...safeUser,
-        departmentName: user.department?.name,
+      user: userData,
+      data: {
+        token,
+        user: userData,
       },
     });
   } catch (err: any) {
     console.error('Login error:', err);
     return res.status(500).json({ error: 'Internal server error during login' });
   }
-});
+};
 
-// POST /api/auth/register
-router.post('/register', async (req, res) => {
+router.post('/login', loginHandler);
+router.post('/signin', loginHandler);
+
+// POST /api/auth/register and /api/auth/signup
+const registerHandler = async (req: any, res: any) => {
   try {
     const { name, email, password, role, jobRole, departmentId } = req.body;
     if (!name || !email || !password) {
-      return res.status(400).json({ error: 'Name, email, and password are required' });
+      return res.status(400).json({ error: 'Name, email, and password are required', message: 'Please check your account details.' });
     }
 
     if (password.length < 6) {
@@ -91,18 +101,28 @@ router.post('/register', async (req, res) => {
     );
 
     const { passwordHash: _, ...safeUser } = newUser;
+    const userData = {
+      ...safeUser,
+      departmentName: newUser.department?.name,
+    };
+
     return res.status(201).json({
+      success: true,
       token,
-      user: {
-        ...safeUser,
-        departmentName: newUser.department?.name,
+      user: userData,
+      data: {
+        token,
+        user: userData,
       },
     });
   } catch (err: any) {
     console.error('Registration error:', err);
     return res.status(500).json({ error: 'Internal server error during registration' });
   }
-});
+};
+
+router.post('/register', registerHandler);
+router.post('/signup', registerHandler);
 
 // GET /api/auth/me
 router.get('/me', authenticateToken, async (req: AuthRequest, res) => {

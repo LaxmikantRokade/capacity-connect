@@ -1,5 +1,6 @@
 import {
   User,
+  UserRole,
   Course,
   Skill,
   UserSkill,
@@ -123,9 +124,27 @@ function initializeLocalStorage() {
 initializeLocalStorage();
 
 export const getApiBaseUrl = (): string => {
-  const envUrl = (import.meta.env.VITE_API_URL as string | undefined)?.trim();
+  const envUrl = (
+    (import.meta.env.VITE_API_URL as string | undefined) ||
+    (import.meta.env.VITE_BACKEND_URL as string | undefined) ||
+    (import.meta.env.PROD ? 'https://capacityconnect-api.onrender.com' : '')
+  )?.trim();
+
   if (!envUrl) return '/api';
-  return envUrl.endsWith('/api') ? envUrl : `${envUrl.replace(/\/$/, '')}/api`;
+
+  const clean = envUrl.replace(/\/$/, '');
+
+  // If already ends with /api/v1 or /api, use it as is (do not blindly append)
+  if (clean.endsWith('/api/v1') || clean.endsWith('/api')) {
+    return clean;
+  }
+
+  // If pointing to the deployed Render backend, route through /api/v1
+  if (clean.includes('capacityconnect-api.onrender.com')) {
+    return `${clean}/api/v1`;
+  }
+
+  return `${clean}/api`;
 };
 
 export const API_BASE = getApiBaseUrl();
@@ -716,10 +735,132 @@ export const api = {
   setCurrentUser(user: User | null, token?: string) {
     if (user) {
       localStorage.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(user));
-      if (token) localStorage.setItem(STORAGE_KEYS.TOKEN, token);
+      if (token) {
+        localStorage.setItem(STORAGE_KEYS.TOKEN, token);
+        localStorage.setItem('cc_token', token);
+      }
     } else {
       localStorage.removeItem(STORAGE_KEYS.CURRENT_USER);
       localStorage.removeItem(STORAGE_KEYS.TOKEN);
+      localStorage.removeItem('cc_token');
+    }
+  },
+
+  // AUTHENTICATION (Remote Render Backend with Seamless Offline/Demo Fallback)
+  async login(email: string, password: string): Promise<{ success: boolean; user?: User; token?: string; error?: string }> {
+    try {
+      let res = await fetch(`${API_BASE}/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password }),
+      });
+      if (res.status === 404) {
+        res = await fetch(`${API_BASE}/auth/signin`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, password }),
+        });
+      }
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error?.message || data.error || data.message || 'Invalid email or password');
+      }
+      const token = data.token || data.data?.token || `token-${Date.now()}`;
+      const user = data.user || data.data?.user;
+      if (token && user) {
+        api.setCurrentUser(user, token);
+      }
+      return { success: true, user, token };
+    } catch (err: any) {
+      // Local demo accounts or custom registered users fallback
+      const matched = DEMO_USERS.find(
+        (u) => u.email.toLowerCase() === email.toLowerCase() && u.passwordText === password
+      );
+      if (matched) {
+        const demoToken = `demo-token-${matched.role.toLowerCase()}-${Date.now()}`;
+        api.setCurrentUser(matched, demoToken);
+        return { success: true, user: matched, token: demoToken };
+      }
+      const customUsersStr = localStorage.getItem('cc_registered_users');
+      if (customUsersStr) {
+        const customUsers = JSON.parse(customUsersStr);
+        const customMatched = customUsers.find(
+          (u: any) => u.email.toLowerCase() === email.toLowerCase() && u.password === password
+        );
+        if (customMatched) {
+          const { password: _, ...safeUser } = customMatched;
+          const t = `token-${safeUser.id}`;
+          api.setCurrentUser(safeUser, t);
+          return { success: true, user: safeUser, token: t };
+        }
+      }
+      return { success: false, error: err.message || 'Login failed' };
+    }
+  },
+
+  async register(payload: {
+    name: string;
+    email: string;
+    password: string;
+    role?: UserRole;
+    departmentName?: string;
+    jobRole?: string;
+  }): Promise<{ success: boolean; user?: User; token?: string; error?: string }> {
+    try {
+      let res = await fetch(`${API_BASE}/auth/register`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: payload.name,
+          email: payload.email,
+          password: payload.password,
+          role: payload.role || 'LEARNER',
+          jobRole: payload.jobRole || 'Officer Trainee',
+        }),
+      });
+      if (res.status === 404) {
+        res = await fetch(`${API_BASE}/auth/signup`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: payload.name,
+            email: payload.email,
+            password: payload.password,
+            role: payload.role || 'LEARNER',
+            jobRole: payload.jobRole || 'Officer Trainee',
+          }),
+        });
+      }
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error?.message || data.error || data.message || 'Registration failed');
+      }
+      const token = data.token || data.data?.token || `token-${Date.now()}`;
+      const user = data.user || data.data?.user;
+      if (token && user) {
+        api.setCurrentUser(user, token);
+      }
+      return { success: true, user, token };
+    } catch (err: any) {
+      // Offline fallback
+      const newUser: User = {
+        id: `user-custom-${Date.now()}`,
+        name: payload.name,
+        email: payload.email,
+        role: payload.role || 'LEARNER',
+        departmentName: payload.departmentName || 'General Administration',
+        jobRole: payload.jobRole || 'Officer Trainee',
+        createdAt: new Date().toISOString(),
+        avatarUrl: `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(payload.name)}`,
+      };
+      const customUsersStr = localStorage.getItem('cc_registered_users');
+      const customUsers = customUsersStr ? JSON.parse(customUsersStr) : [];
+      customUsers.push({ ...newUser, password: payload.password });
+      localStorage.setItem('cc_registered_users', JSON.stringify(customUsers));
+
+      const t = `token-${newUser.id}`;
+      api.setCurrentUser(newUser, t);
+      return { success: true, user: newUser, token: t };
     }
   },
 

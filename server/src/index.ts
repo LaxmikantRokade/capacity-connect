@@ -57,34 +57,52 @@ app.use((req, res, next) => {
   next();
 });
 
-// Root & API Health check endpoints (for load balancers & Render web service health checks)
+// Root & API Health check endpoints (for load balancers, Vercel proxies & Render web service health checks)
 const healthHandler = (req: express.Request, res: express.Response) => {
   res.json({
     status: 'ok',
+    success: true,
     project: 'CAPACITY CONNECT',
     problemStatementId: 'SIH26075',
     environment: process.env.NODE_ENV || 'development',
     timestamp: new Date().toISOString(),
+    data: {
+      status: 'ok',
+      service: 'capacity-connect-api',
+      version: 'v1',
+    },
   });
 };
 
 app.get('/health', healthHandler);
 app.get('/api/health', healthHandler);
+app.get('/api/v1/health', healthHandler);
 
-// Mount modular API routers
-app.use('/api/auth', authRoutes);
-app.use('/api/courses', coursesRoutes);
-app.use('/api/assessments', assessmentsRoutes);
-app.use('/api/skills', skillsRoutes);
-app.use('/api/training', trainingRoutes);
-app.use('/api/knowledge', knowledgeRoutes);
-app.use('/api/certificates', certificatesRoutes);
-app.use('/api/notifications', notificationsRoutes);
-app.use('/api/admin', adminRoutes);
+// Mount modular API routers on both /api and /api/v1 for complete backward/forward compatibility
+const mountRouters = (prefix: string) => {
+  app.use(`${prefix}/auth`, authRoutes);
+  app.use(`${prefix}/courses`, coursesRoutes);
+  app.use(`${prefix}/assessments`, assessmentsRoutes);
+  app.use(`${prefix}/skills`, skillsRoutes);
+  app.use(`${prefix}/training`, trainingRoutes);
+  app.use(`${prefix}/knowledge`, knowledgeRoutes);
+  app.use(`${prefix}/certificates`, certificatesRoutes);
+  app.use(`${prefix}/notifications`, notificationsRoutes);
+  app.use(`${prefix}/admin`, adminRoutes);
+};
+
+mountRouters('/api');
+mountRouters('/api/v1');
 
 // 404 Handler for API
-app.use('/api/*', (req, res) => {
-  res.status(404).json({ error: 'Requested API endpoint not found' });
+app.use(['/api/*', '/api/v1/*'], (req, res) => {
+  res.status(404).json({
+    success: false,
+    error: {
+      code: 'NOT_FOUND',
+      message: 'Requested API endpoint not found',
+    },
+  });
 });
 
 // Global error handler

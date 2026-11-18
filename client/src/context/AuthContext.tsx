@@ -39,40 +39,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const login = async (email: string, password: string): Promise<{ success: boolean; error?: string }> => {
     setIsLoading(true);
     try {
-      // Check demo accounts first
-      const matched = DEMO_USERS.find(
-        (u) => u.email.toLowerCase() === email.toLowerCase() && u.passwordText === password
-      );
-
-      if (matched) {
-        setUser(matched);
-        const demoToken = `demo-token-${matched.role.toLowerCase()}-${Date.now()}`;
-        setToken(demoToken);
-        api.setCurrentUser(matched, demoToken);
+      const res = await api.login(email, password);
+      if (res.success && res.user) {
+        setUser(res.user);
+        setToken(res.token || 'auth-token');
         setIsLoading(false);
         return { success: true };
       }
-
-      // Check stored custom registered users
-      const customUsersStr = localStorage.getItem('cc_registered_users');
-      if (customUsersStr) {
-        const customUsers = JSON.parse(customUsersStr);
-        const customMatched = customUsers.find(
-          (u: any) => u.email.toLowerCase() === email.toLowerCase() && u.password === password
-        );
-        if (customMatched) {
-          const { password: _, ...safeUser } = customMatched;
-          setUser(safeUser);
-          const t = `token-${safeUser.id}`;
-          setToken(t);
-          api.setCurrentUser(safeUser, t);
-          setIsLoading(false);
-          return { success: true };
-        }
-      }
-
       setIsLoading(false);
-      return { success: false, error: 'Invalid email or password. You can also click any Quick Demo Role button below.' };
+      return { success: false, error: res.error || 'Invalid email or password' };
     } catch (err: any) {
       setIsLoading(false);
       return { success: false, error: err.message || 'Login failed' };
@@ -97,29 +72,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }): Promise<{ success: boolean; error?: string }> => {
     setIsLoading(true);
     try {
-      const newUser: User = {
-        id: `user-custom-${Date.now()}`,
-        name: data.name,
-        email: data.email,
-        role: data.role || 'LEARNER',
-        departmentName: data.departmentName || 'General Administration',
-        jobRole: data.jobRole || 'Officer Trainee',
-        createdAt: new Date().toISOString(),
-        avatarUrl: `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(data.name)}`,
-      };
-
-      const customUsersStr = localStorage.getItem('cc_registered_users');
-      const customUsers = customUsersStr ? JSON.parse(customUsersStr) : [];
-      customUsers.push({ ...newUser, password: data.password });
-      localStorage.setItem('cc_registered_users', JSON.stringify(customUsers));
-
-      setUser(newUser);
-      const t = `token-${newUser.id}`;
-      setToken(t);
-      api.setCurrentUser(newUser, t);
-
+      const res = await api.register(data);
+      if (res.success && res.user) {
+        setUser(res.user);
+        setToken(res.token || 'auth-token');
+        setIsLoading(false);
+        return { success: true };
+      }
       setIsLoading(false);
-      return { success: true };
+      return { success: false, error: res.error || 'Registration failed' };
     } catch (err: any) {
       setIsLoading(false);
       return { success: false, error: err.message || 'Registration failed' };

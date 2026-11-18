@@ -100,6 +100,41 @@ describe('Capacity Connect Server Health & API Endpoints', () => {
     expect(res.body.certificate.userName).toBe('Rahul Sharma');
   });
 
+  it('GET /api/v1/health should return ok with v1 metadata', async () => {
+    const res = await request(app).get('/api/v1/health');
+    expect(res.status).toBe(200);
+    expect(res.body.status).toBe('ok');
+    expect(res.body.success).toBe(true);
+    expect(res.body.data.version).toBe('v1');
+  });
+
+  it('POST /api/v1/auth/signin should authenticate valid demo credentials', async () => {
+    const res = await request(app)
+      .post('/api/v1/auth/signin')
+      .send({ email: 'rahul.sharma@gov.in', password: 'Learner@123' });
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(res.body.token).toBeDefined();
+    expect(res.body.data.token).toBeDefined();
+    expect(res.body.user.email).toBe('rahul.sharma@gov.in');
+  });
+
+  it('POST /api/auth/login should authenticate valid demo credentials', async () => {
+    const res = await request(app)
+      .post('/api/auth/login')
+      .send({ email: 'admin@capacityconnect.in', password: 'Admin@123' });
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(res.body.token).toBeDefined();
+  });
+
+  it('POST /api/v1/auth/signup should reject missing fields with validation error', async () => {
+    const res = await request(app)
+      .post('/api/v1/auth/signup')
+      .send({ email: 'incomplete@gov.in' });
+    expect(res.status).toBe(400);
+  });
+
   it('GET /api/nonexistent should return 404', async () => {
     const res = await request(app).get('/api/nonexistent');
     expect(res.status).toBe(404);
