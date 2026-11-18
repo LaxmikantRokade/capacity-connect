@@ -17,18 +17,29 @@ const app = express();
 const PORT = Number(process.env.PORT) || 5001;
 const HOST = process.env.HOST || '0.0.0.0';
 
-// CORS configuration supporting single or multiple comma-separated URLs
-const parseAllowedOrigins = () => {
+// CORS configuration supporting configured URLs and standard Vercel/Render deployments
+const isOriginAllowed = (origin?: string): boolean => {
+  if (!origin) return true; // Allow non-browser requests (curl, server-to-server, health checks)
   const clientUrl = process.env.CLIENT_URL?.trim();
-  if (!clientUrl) {
-    return ['http://localhost:5173', 'http://127.0.0.1:5173', 'http://localhost:5001', 'http://localhost:4173'];
-  }
-  if (clientUrl === '*') return true;
-  return clientUrl.split(',').map((url) => url.trim().replace(/\/$/, ''));
+  if (!clientUrl || clientUrl === '*') return true;
+  const configured = clientUrl.split(',').map((url) => url.trim().replace(/\/$/, ''));
+  if (configured.includes(origin) || configured.includes('*')) return true;
+  // Allow Vercel deployments (including preview branches) and Render origins
+  if (/^https:\/\/[a-zA-Z0-9_-]+\.vercel\.app$/.test(origin)) return true;
+  if (/^https:\/\/[a-zA-Z0-9_-]+\.onrender\.com$/.test(origin)) return true;
+  // Local development origins
+  if (/^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)) return true;
+  return false;
 };
 
 app.use(cors({
-  origin: parseAllowedOrigins(),
+  origin: (origin, callback) => {
+    if (isOriginAllowed(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error(`CORS not allowed for origin: ${origin}`));
+    }
+  },
   credentials: true,
 }));
 

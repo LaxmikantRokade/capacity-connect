@@ -30,7 +30,7 @@ export const CourseCatalogPage: React.FC = () => {
     loadCourses();
   }, [selectedCategory, selectedLevel, search]);
 
-  const categories = ['All', 'Governance & Tech', 'Cybersecurity', 'Analytics & Tech', 'Innovation'];
+  const categories = ['All', 'Programming', 'Web', 'Data', 'Soft Skills', 'Governance & Tech', 'Cybersecurity', 'Analytics & Tech', 'Innovation'];
   const levels = ['All', 'BEGINNER', 'INTERMEDIATE', 'ADVANCED'];
 
   return (

@@ -38,10 +38,21 @@ const STORAGE_KEYS = {
   ANNOUNCEMENTS: 'cc_announcements_store',
   ASSESSMENTS: 'cc_assessments_store',
   ATTEMPTS: 'cc_attempts_store',
+  DATA_VERSION: 'cc_data_version_tag',
 };
 
-// Initialize LocalStorage with seed data if empty
+const CURRENT_DATA_VERSION = 'v2026_5_new_courses_lms_v1';
+
+// Initialize LocalStorage with seed data if empty or outdated
 function initializeLocalStorage() {
+  const existingVersion = localStorage.getItem(STORAGE_KEYS.DATA_VERSION);
+  if (existingVersion !== CURRENT_DATA_VERSION) {
+    // Force refresh courses and assessments to ensure complete 4-module tracks and verified educational videos
+    localStorage.setItem(STORAGE_KEYS.COURSES, JSON.stringify(INITIAL_COURSES));
+    localStorage.setItem(STORAGE_KEYS.ASSESSMENTS, JSON.stringify(INITIAL_ASSESSMENTS));
+    localStorage.setItem(STORAGE_KEYS.DATA_VERSION, CURRENT_DATA_VERSION);
+  }
+
   if (!localStorage.getItem(STORAGE_KEYS.COURSES)) {
     localStorage.setItem(STORAGE_KEYS.COURSES, JSON.stringify(INITIAL_COURSES));
   }
@@ -193,7 +204,16 @@ export const api = {
   async getCourseById(id: string): Promise<Course | null> {
     return fetchWithFallback<Course | null>(`/courses/${id}`, undefined, () => {
       const list: Course[] = JSON.parse(localStorage.getItem(STORAGE_KEYS.COURSES) || '[]');
-      const course = list.find((c) => c.id === id);
+      const course = list.find(
+        (c) =>
+          c.id === id ||
+          c.code.toLowerCase() === id.toLowerCase() ||
+          (id === '1' && (c.id === 'course-5' || c.code === 'PY-101' || c.id === 'course-1')) ||
+          (id === '2' && (c.id === 'course-6' || c.code === 'WEB-101' || c.id === 'course-2')) ||
+          (id === '3' && (c.id === 'course-7' || c.code === 'SQL-201' || c.id === 'course-3')) ||
+          (id === '4' && (c.id === 'course-8' || c.code === 'DSA-201' || c.id === 'course-4')) ||
+          (id === '5' && (c.id === 'course-9' || c.code === 'COMM-101'))
+      );
       if (!course) return null;
 
       const enrollments = JSON.parse(localStorage.getItem(STORAGE_KEYS.ENROLLMENTS) || '[]');

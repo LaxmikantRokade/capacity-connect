@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useParams, useNavigate, Link } from 'react-router-dom';
+import { useParams, useNavigate, Link, useSearchParams } from 'react-router-dom';
 import {
   ArrowLeft,
   CheckCircle,
@@ -11,12 +11,40 @@ import {
   ChevronLeft,
   BookOpen,
   Sparkles,
+  ExternalLink,
 } from 'lucide-react';
 import { api } from '../services/api';
 import { Course, CourseModule } from '../types';
 
+export function extractYouTubeId(url?: string): string | null {
+  if (!url) return null;
+  const trimmed = url.trim();
+  const embedMatch = trimmed.match(/youtube(?:-nocookie)?\.com\/embed\/([a-zA-Z0-9_-]{11})/i);
+  if (embedMatch) return embedMatch[1];
+  const watchMatch = trimmed.match(/[?&]v=([a-zA-Z0-9_-]{11})/i);
+  if (watchMatch) return watchMatch[1];
+  const shortMatch = trimmed.match(/youtu\.be\/([a-zA-Z0-9_-]{11})/i);
+  if (shortMatch) return shortMatch[1];
+  return null;
+}
+
+export function getYouTubeEmbedUrl(url?: string): string | null {
+  const id = extractYouTubeId(url);
+  if (id) {
+    return `https://www.youtube.com/embed/${id}?rel=0&modestbranding=1&enablejsapi=1`;
+  }
+  return url || null;
+}
+
+export function getYouTubeWatchUrl(url?: string): string {
+  const id = extractYouTubeId(url);
+  if (id) return `https://www.youtube.com/watch?v=${id}`;
+  return url || '#';
+}
+
 export const InteractiveLearningPage: React.FC = () => {
   const { courseId } = useParams<{ courseId: string }>();
+  const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
 
   const [course, setCourse] = useState<Course | null>(null);
@@ -30,6 +58,27 @@ export const InteractiveLearningPage: React.FC = () => {
       try {
         const data = await api.getCourseById(courseId);
         setCourse(data);
+
+        // Auto-enroll if visiting directly and not enrolled
+        if (data && !data.isEnrolled) {
+          api.enrollCourse(data.id).catch(() => {});
+        }
+
+        // Set initial module from URL param ?unit=... or first incomplete module
+        if (data && data.modules && data.modules.length > 0) {
+          const unitParam = searchParams.get('unit');
+          if (unitParam) {
+            const parsedUnit = parseInt(unitParam, 10);
+            if (!isNaN(parsedUnit) && parsedUnit >= 0 && parsedUnit < data.modules.length) {
+              setActiveModuleIndex(parsedUnit);
+              return;
+            }
+          }
+          const firstIncomplete = data.modules.findIndex((m) => !m.isCompleted);
+          if (firstIncomplete !== -1) {
+            setActiveModuleIndex(firstIncomplete);
+          }
+        }
       } catch (err) {
         console.error('Failed to load course player:', err);
       } finally {
@@ -49,17 +98,24 @@ export const InteractiveLearningPage: React.FC = () => {
 
   if (!course || !course.modules || course.modules.length === 0) {
     return (
-      <div className="p-8 text-center">
-        <h2 className="text-base font-bold">Course modules unavailable.</h2>
-        <Link to="/courses" className="mt-4 inline-block text-brand-600 underline text-xs">
-          Return to catalog
+      <div className="max-w-md mx-auto my-16 rounded-2xl border border-slate-200 bg-white p-8 text-center shadow-sm dark:border-slate-800 dark:bg-navy-900">
+        <BookOpen className="mx-auto h-12 w-12 text-slate-400 mb-3" />
+        <h2 className="text-base font-bold text-slate-900 dark:text-white">Course modules unavailable.</h2>
+        <p className="text-xs text-slate-500 mt-1">This course does not currently have active curriculum modules configured.</p>
+        <Link to="/courses" className="mt-4 inline-block text-brand-600 font-semibold underline text-xs">
+          Return to course catalog
         </Link>
       </div>
     );
   }
 
-  const activeModule: CourseModule = course.modules[activeModuleIndex];
+  const activeModule: CourseModule = course.modules[activeModuleIndex] || course.modules[0];
   const allModulesCompleted = course.modules.every((m) => m.isCompleted);
+
+  const handleSelectModule = (index: number) => {
+    setActiveModuleIndex(index);
+    setSearchParams({ unit: index.toString() });
+  };
 
   const handleMarkComplete = async () => {
     if (!course || !course.modules || !activeModule) return;
@@ -77,7 +133,7 @@ export const InteractiveLearningPage: React.FC = () => {
 
       // Advance to next module if available
       if (activeModuleIndex < course.modules.length - 1) {
-        setActiveModuleIndex(activeModuleIndex + 1);
+        handleSelectModule(activeModuleIndex + 1);
       }
     } catch (err) {
       console.error('Failed to mark module complete:', err);
@@ -130,6 +186,10 @@ export const InteractiveLearningPage: React.FC = () => {
                 <span>Unit {activeModuleIndex + 1} of {course.modules.length}</span>
                 <span>•</span>
                 <span>{activeModule.durationMinutes} mins</span>
+                <span>•</span>
+                <span className="uppercase text-[10px] tracking-wider px-1.5 py-0.5 rounded bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
+                  {activeModule.contentType === 'VIDEO' ? 'Video Lecture' : 'Interactive Study Unit'}
+                </span>
               </div>
               <h1 className="text-xl sm:text-2xl font-extrabold text-slate-900 dark:text-white">
                 {activeModule.title}
@@ -137,15 +197,40 @@ export const InteractiveLearningPage: React.FC = () => {
             </div>
 
             {/* Video Player if module is video */}
-            {activeModule.contentType === 'VIDEO' && activeModule.videoUrl && (
-              <div className="relative aspect-video w-full rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-800 bg-black shadow-lg">
-                <iframe
-                  src={activeModule.videoUrl}
-                  title={activeModule.title}
-                  className="h-full w-full"
-                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                  allowFullScreen
-                />
+            {activeModule.contentType === 'VIDEO' && (
+              <div className="space-y-2">
+                {activeModule.videoUrl ? (
+                  <div className="rounded-2xl border border-slate-200 bg-white p-3 shadow-md dark:border-slate-800 dark:bg-navy-900">
+                    <div className="flex items-center justify-between pb-2 px-1 text-xs text-slate-500 dark:text-slate-400">
+                      <div className="flex items-center gap-1.5 font-semibold text-brand-600 dark:text-brand-400">
+                        <PlayCircle className="h-4 w-4" />
+                        <span>Curated Technical Lecture • {activeModule.durationMinutes} mins</span>
+                      </div>
+                      <a
+                        href={getYouTubeWatchUrl(activeModule.videoUrl)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 text-[11px] font-semibold text-slate-500 hover:text-brand-600 transition"
+                      >
+                        Watch on YouTube <ExternalLink className="h-3 w-3" />
+                      </a>
+                    </div>
+                    <div className="relative aspect-video w-full rounded-xl overflow-hidden bg-black shadow-inner">
+                      <iframe
+                        src={getYouTubeEmbedUrl(activeModule.videoUrl) || ''}
+                        title={activeModule.title}
+                        className="h-full w-full border-0"
+                        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                        allowFullScreen
+                      />
+                    </div>
+                  </div>
+                ) : (
+                  <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 p-4 text-xs text-amber-700 dark:text-amber-300">
+                    <p className="font-bold">Video lecture marked as pending verification for this unit.</p>
+                    <p className="mt-1">Please study the detailed reference syllabus and architectural guide below.</p>
+                  </div>
+                )}
               </div>
             )}
 
@@ -184,7 +269,7 @@ export const InteractiveLearningPage: React.FC = () => {
             <div className="flex items-center justify-between pt-4 border-t border-slate-200 dark:border-slate-800">
               <button
                 disabled={activeModuleIndex === 0}
-                onClick={() => setActiveModuleIndex(activeModuleIndex - 1)}
+                onClick={() => handleSelectModule(activeModuleIndex - 1)}
                 className="inline-flex items-center gap-1.5 rounded-xl border border-slate-300 bg-white px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 disabled:opacity-40"
               >
                 <ChevronLeft className="h-4 w-4" /> Previous Unit
@@ -237,7 +322,7 @@ export const InteractiveLearningPage: React.FC = () => {
             {course.modules.map((m, idx) => (
               <button
                 key={m.id}
-                onClick={() => setActiveModuleIndex(idx)}
+                onClick={() => handleSelectModule(idx)}
                 className={`w-full text-left rounded-xl p-3 text-xs transition flex items-start gap-2.5 ${
                   idx === activeModuleIndex
                     ? 'border border-brand-500/40 bg-brand-50 text-brand-900 dark:bg-brand-950/60 dark:text-brand-200 font-semibold'
@@ -252,7 +337,7 @@ export const InteractiveLearningPage: React.FC = () => {
                 <div>
                   <p className="line-clamp-2">{m.title}</p>
                   <span className="text-[10px] text-slate-400 font-normal">
-                    {m.durationMinutes} mins • {m.contentType}
+                    {m.durationMinutes} mins • {m.contentType === 'VIDEO' ? 'Video Lecture' : 'Study Unit'}
                   </span>
                 </div>
               </button>
